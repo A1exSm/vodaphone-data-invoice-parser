@@ -1,12 +1,9 @@
 from typing import Literal, get_args, cast, Final
+import statistics
 import pdfplumber
 
-Month = Literal["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Nov", "Dec"]
+Month = Literal["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 Day = Literal["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-TEST_ADDRESS: Final[str] = "PLEASE SET ME TO THE ADDRESS OF THE PDF FILE"
-
-assert TEST_ADDRESS != "PLEASE SET ME TO THE ADDRESS OF THE PDF FILE", "Please set the TEST_ADDRESS variable to the address of the PDF file."
 
 
 class DataDay:
@@ -19,7 +16,7 @@ class DataDay:
 class DataMonth:
     def __init__(self, month: Month) -> None:
         self.month: Final[Month] = month
-        self.total_data_mb: float = 0.0
+        self.total_data_mb: float | int = 0.0
         self.data_days: dict[int, DataDay] = {}
 
     def add(self, day: Day, date: int, data_mb: float | int):
@@ -40,6 +37,16 @@ class DataYear:
             self.data_months[month] = DataMonth(month)
         self.data_months[month].total_data_mb += data_mb
 
+    def get_month_avg(self) -> float | int:
+        if len(self.data_months) == 0:
+            return 0.0
+        return self.total_data_mb / len(self.data_months)
+
+    def get_month_median(self) -> float | int:
+        if len(self.data_months) == 0:
+            return 0.0
+        return statistics.median([month.total_data_mb for month in self.data_months.values()])
+
 
 class PhoneNumber:
     def __init__(self, number: str) -> None:
@@ -58,11 +65,25 @@ class PhoneNumber:
         self.data_years[year].data_months[month].add(day, date, data_mb)
 
 
+phone_numbers: dict[str, PhoneNumber] = {}
+
+
+def print_doc(document: list[list[str]]):
+    for page in document:
+        for line in page:
+            print(line)
+        print("-------------------------------------------------------------------------------------------")
+    print("------------------------[END OF DOCUMENT]------------------------")
+
+
 def get_year_month(first_page: list[str]) -> tuple[str, Month]:
     parsed_line: list[str] = first_page[1].split()
     month = parsed_line[1][0:3]
     year = parsed_line[2]
-    assert month in get_args(Month)
+    try:
+        assert month in get_args(Month)
+    except AssertionError:
+        raise ValueError(f"Invalid month: {month}")
     return year, cast(Month, month)
 
 
@@ -70,7 +91,11 @@ def get_numbers(first_page: list[str]) -> set[str]:
     numbers: Final[set[str]] = set()
     for line in first_page:
         if line.startswith("Mobile ("):
-            numbers.add(line[8:-1])
+            number: str = line[line.find("(") + 1: line.find(")")]
+            if not number.isdigit():
+                raise ValueError(f"Invalid number in line: {line}")
+            numbers.add(number)
+
     return numbers
 
 
@@ -86,11 +111,18 @@ def get_year(document_year: str, document_month: Month, page_month: Month) -> st
     """
     if page_month == 'Dec' and (document_month == 'Jan' or document_month == 'Feb'):
         return str(int(document_year) - 1)
+
     return document_year
 
 
-def get_data(document: list[list[str]], numbers: set[str]) -> dict[str, PhoneNumber]:
-    phone_numbers: dict[str, PhoneNumber] = {number: PhoneNumber(number) for number in numbers}
+def handle_numbers(numbers: set[str]):
+    for number in numbers:
+        if not (number in phone_numbers):
+            phone_numbers[number] = PhoneNumber(number)
+
+
+def get_data(document: list[list[str]], numbers: set[str]):
+    handle_numbers(numbers)
     year, document_month = get_year_month(document[0])
     is_data = False
     for page in document:
@@ -113,18 +145,24 @@ def get_data(document: list[list[str]], numbers: set[str]) -> dict[str, PhoneNum
                     line_month: Month = cast(Month, line[2])
                     data_mb = float(line[3])
                     # Parse end
-                    year: str = get_year(year, document_month, line_month)
-                    phone_numbers[number].add_if_absent(year)
-                    phone_numbers[number].add_entry(year, line_month, date, day, data_mb)
-    return phone_numbers
+                    cur_year: str = get_year(year, document_month, line_month)
+                    phone_numbers[number].add_if_absent(cur_year)
+                    phone_numbers[number].add_entry(cur_year, line_month, date, day, data_mb)
 
 
-def main():
-    document: list[list[str]] = get_document(TEST_ADDRESS)
-    numbers: set[str] = get_numbers(document[0])
-    data: dict[str, PhoneNumber] = get_data(document, numbers)
-    for number in numbers:
-        number_data = data[number]
+def parse_pdf(path: str):
+    document: list[list[str]] = get_document(path)
+    try:
+        numbers: set[str] = get_numbers(document[0])
+    except ValueError as e:
+        print_doc(document)
+        raise e
+
+    get_data(document, numbers)
+
+
+def print_data():
+    for number, number_data in phone_numbers.items():
         print(f"{number}:")
         print(f"\tTotal data usage: {number_data.total_data_mb} MB")
         for year, data_year in number_data.data_years.items():
@@ -136,7 +174,3 @@ def main():
                 for date, data_day in data_month.data_days.items():
                     print(f"\t\t\t\t{date}: {data_day.total_data_mb} MB")
         print("-------------------------------------------------------------------------------------------")
-
-
-if __name__ == "__main__":
-    main()
