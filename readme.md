@@ -1,11 +1,11 @@
 ### About this project
 This project is a simple tool which parses vodaphone phone bill PDF files and generates a report.
 <br><br>
-`Note: This project is a function project where I focused on parsing, any GUI and report generation is generative.`
+`Note: This is a functional project where I focused on parsing, any GUI and report generation is generative.`
 ### Setup
 1. Simply clone the repository.
 2. Pip install the dependencies.
-3. Run gui.py!
+3. Run gui.py
 ### Usage
 * Select input files via the GUI (Files may also be dropped into the GUI).
 * Select the output file.
